@@ -3,10 +3,14 @@
  */
 
 /**
- * SDK initialization accepts only the API key
+ * SDK initialization config
+ * Accepts API key (required) and optional user ID
  * All other settings use internal defaults
  */
-export type AxyleInitConfig = string | { apiKey: string };
+export type AxyleInitConfig = string | {
+  apiKey: string;
+  userId?: string;
+};
 
 /**
  * Internal configuration type with all settings

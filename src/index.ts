@@ -17,15 +17,18 @@ import type {
  */
 export const Axyle = {
   /**
-   * Initialize the SDK with your API key
+   * Initialize the SDK with your API key and optional user ID
    *
    * @example
    * ```ts
    * // Simple: just pass the API key as a string
    * Axyle.init('your-api-key');
    *
-   * // Or as an object
-   * Axyle.init({ apiKey: 'your-api-key' });
+   * // With optional user ID (e.g., pre-authenticated user)
+   * Axyle.init({
+   *   apiKey: 'your-api-key',
+   *   userId: 'user-123'
+   * });
    * ```
    */
   init: (config: AxyleInitConfig) => client.init(config),

@@ -4,12 +4,13 @@ A privacy-focused, lightweight analytics SDK for Expo and React Native applicati
 
 ## Features
 
-- **Simple Integration** - One-line initialization with just an API key
-- **Automatic Tracking** - App lifecycle, sessions, and screen views
-- **Offline Support** - Events are queued and sent when connection is available
-- **Privacy First** - No PII collected by default, opt-out support, GDPR-compliant data deletion
-- **Zero Configuration** - Sensible defaults for all settings
-- **TypeScript Support** - Full type definitions included
+- **[Simple Integration](#quick-start)** - One-line initialization with just an API key
+- **[Flexible User Identification](#user-identification)** - Set user ID at init time or during runtime with `identify()`
+- **[Automatic Tracking](#automatically-tracked-events)** - App lifecycle, sessions, and screen views
+- **[Offline Support](#quick-start)** - Events are queued and sent when connection is available
+- **[Privacy First](#privacy-methods)** - No PII collected by default, opt-out support, GDPR-compliant data deletion
+- **[Zero Configuration](#configuration)** - Sensible defaults for all settings
+- **[TypeScript Support](#typescript)** - Full type definitions included
 
 ## Installation
 
@@ -38,6 +39,22 @@ import { Axyle } from "@axyle/expo-sdk";
 export default function App() {
   useEffect(() => {
     Axyle.init("your-api-key");
+  }, []);
+
+  return <YourApp />;
+}
+```
+
+**For pre-authenticated users** (already logged in before app loads):
+
+```tsx
+export default function App() {
+  useEffect(async () => {
+    const user = await getLoggedInUser();
+    Axyle.init({
+      apiKey: "your-api-key",
+      userId: user?.id, // Optional: set user ID at init
+    });
   }, []);
 
   return <YourApp />;
@@ -80,7 +97,7 @@ Axyle.reset();
 
 ### Core Methods
 
-#### `Axyle.init(apiKey)`
+#### `Axyle.init(apiKey | config)`
 
 Initialize the SDK. Must be called before any other methods.
 
@@ -90,7 +107,18 @@ Axyle.init("your-api-key");
 
 // Or as an object
 Axyle.init({ apiKey: "your-api-key" });
+
+// With optional user ID (for pre-authenticated users)
+Axyle.init({
+  apiKey: "your-api-key",
+  userId: "user-123",
+});
 ```
+
+**Parameters:**
+
+- `apiKey` (string, required) - Your Axyle API key
+- `userId` (string, optional) - Set user ID at initialization
 
 #### `Axyle.track(eventName, properties?)`
 
@@ -192,6 +220,154 @@ Get events filtered by type.
 
 ```tsx
 const buttonClicks = Axyle.getEventsByType("Button Clicked");
+```
+
+## User Identification
+
+The SDK offers flexible user identification that works with different authentication patterns. You can set a user ID at initialization time or dynamically during runtime.
+
+### Initialization with User ID
+
+Set the user ID during SDK initialization for pre-authenticated users:
+
+```tsx
+export default function App() {
+  useEffect(async () => {
+    // Retrieve cached/stored user ID
+    const cachedUserId = await AsyncStorage.getItem("user_id");
+
+    // Initialize with optional user ID
+    Axyle.init({
+      apiKey: "your-api-key",
+      userId: cachedUserId, // Optional: pre-authenticated user
+    });
+  }, []);
+
+  return <YourApp />;
+}
+```
+
+**When to use:**
+
+- User is already logged in when app starts
+- You have a cached/stored user ID from previous session
+- You want all events from app start to include user ID
+
+**Result:** All events immediately have the correct user ID.
+
+### Dynamic User Identification
+
+Call `identify()` when user logs in during app runtime:
+
+```tsx
+async function handleLogin(username, password) {
+  const user = await login(username, password);
+
+  // Set user ID and associate with previous anonymous events
+  Axyle.identify(user.id, {
+    username: user.username,
+    email: user.email,
+    loginMethod: "email",
+  });
+}
+```
+
+**When to use:**
+
+- User starts anonymous and logs in later
+- You want to transition from anonymous to identified tracking
+- You need to capture user traits at login
+
+**Result:** Generates "User Identified" event with traits; previous anonymous events are associated with new user ID.
+
+### Comparing Init User ID vs identify()
+
+| Scenario                         | Init `userId`     | `identify()`                     |
+| -------------------------------- | ----------------- | -------------------------------- |
+| **Pre-authenticated users**      | ✅ Best choice    | Not needed                       |
+| **Users logging in mid-session** | ❌ Too early      | ✅ Use this                      |
+| **App restart with cached user** | ✅ Convenient     | Works but requires extra storage |
+| **Anonymous to identified flow** | ❌ Not applicable | ✅ Perfect                       |
+| **Traits/properties needed?**    | ❌ No (just ID)   | ✅ Yes (second param)            |
+| **Generates event?**             | ❌ No             | ✅ "User Identified"             |
+
+### Logout and Session Reset
+
+Clear user data when user logs out:
+
+```tsx
+async function handleLogout() {
+  // Flush any pending events
+  await Axyle.flush();
+
+  // Clear user ID and start new session
+  Axyle.reset();
+
+  // Optional: disable tracking if user requested it
+  // Axyle.optOut();
+}
+```
+
+**What `reset()` does:**
+
+- Clears the current user ID
+- Starts a new session with new session ID
+- Generates "Session Started" event for new session
+- Keeps anonymous ID for continuity
+
+### Complete Authentication Flow Example
+
+```tsx
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Axyle } from "@axyle/expo-sdk";
+
+export default function App() {
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  useEffect(() => {
+    initializeAnalytics();
+  }, []);
+
+  const initializeAnalytics = async () => {
+    try {
+      // Try to restore user from previous session
+      const savedUserId = await AsyncStorage.getItem("user_id");
+
+      Axyle.init({
+        apiKey: "your-api-key",
+        userId: savedUserId || undefined, // Set if available
+      });
+
+      setIsInitialized(true);
+    } catch (error) {
+      console.error("Analytics init failed:", error);
+    }
+  };
+
+  const handleLogin = async (email, password) => {
+    const user = await authenticateUser(email, password);
+
+    // Save user ID for next app restart
+    await AsyncStorage.setItem("user_id", user.id);
+
+    // Identify user in analytics
+    Axyle.identify(user.id, {
+      email: user.email,
+      name: user.name,
+    });
+  };
+
+  const handleLogout = async () => {
+    // Clear saved user ID
+    await AsyncStorage.removeItem("user_id");
+
+    // Reset analytics
+    await Axyle.flush();
+    Axyle.reset();
+  };
+
+  return isInitialized ? <YourApp /> : <LoadingScreen />;
+}
 ```
 
 ## Screen Tracking
@@ -413,7 +589,44 @@ function App() {
 }
 ```
 
-### 2. Use Descriptive Event Names
+### 2. Handle User ID Correctly
+
+**For pre-authenticated apps:**
+
+```tsx
+useEffect(() => {
+  (async () => {
+    const userId = await getStoredUserId();
+    Axyle.init({
+      apiKey: "your-api-key",
+      userId: userId,
+    });
+  })();
+}, []);
+```
+
+**For apps with login flow:**
+
+```tsx
+// Don't set user ID at init
+Axyle.init("your-api-key");
+
+// Set it when user logs in
+const handleLogin = (user) => {
+  Axyle.identify(user.id, { email: user.email });
+};
+```
+
+**Always flush before logout:**
+
+```tsx
+const handleLogout = async () => {
+  await Axyle.flush(); // Ensure all events sent
+  Axyle.reset();
+};
+```
+
+### 3. Use Descriptive Event Names
 
 ```tsx
 // Good
@@ -482,6 +695,48 @@ function SettingsScreen() {
 2. Check network connectivity
 3. Call `Axyle.flush()` to force send events
 4. Check if user has opted out
+
+### User ID Not Set
+
+**Issue:** Events don't have the expected user ID
+
+**Solutions:**
+
+- Verify `userId` is passed to `Axyle.init()` or set via `Axyle.identify()`
+- Check that `init()` is called before tracking events
+- Use `Axyle.getSessionStats()` to verify user ID in current session
+
+```tsx
+const stats = Axyle.getSessionStats();
+console.log("Current user ID:", stats?.userId); // Check if set correctly
+```
+
+### User ID Not Persisting Across App Restarts
+
+**Issue:** User ID is lost when app restarts
+
+**Solution:** Store and restore user ID from AsyncStorage
+
+```tsx
+// On login - save user ID
+Axyle.identify(userId, traits);
+await AsyncStorage.setItem("user_id", userId);
+
+// On app start - restore user ID
+const savedUserId = await AsyncStorage.getItem("user_id");
+Axyle.init({
+  apiKey: "your-api-key",
+  userId: savedUserId,
+});
+```
+
+### User ID Changed But Events Still Use Old ID
+
+**Issue:** After calling `identify()` with new user ID, some events still have old ID
+
+**Likely cause:** Events were queued before `identify()` was called
+
+**Solution:** This is expected behavior. Queued events retain their original user ID. Call `Axyle.flush()` after `identify()` to ensure new user ID is used for subsequent events.
 
 ### TypeScript Errors
 

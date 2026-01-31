@@ -78,12 +78,14 @@ export class AxyleClient {
 
   /**
    * Initialize the SDK
-   * Only accepts API key - all other settings use defaults
+   * Accepts API key (required) and optional user ID
+   * All other settings use defaults
    */
   async init(config: AxyleInitConfig): Promise<void> {
     try {
-      // Extract API key from string or object
+      // Extract API key and user ID from string or object
       const apiKey = typeof config === "string" ? config : config.apiKey;
+      const providedUserId = typeof config === "string" ? undefined : config.userId;
 
       if (!apiKey) {
         this.logger.warn("API key is required for SDK initialization");
@@ -115,8 +117,16 @@ export class AxyleClient {
       // Load anonymous ID
       this.anonymousId = await Storage.getAnonymousId();
 
-      // Load user ID from storage (not configurable at init)
-      this.userId = await Storage.getUserId();
+      // Load or set user ID
+      if (providedUserId) {
+        // Use provided user ID (e.g., pre-authenticated user)
+        this.userId = providedUserId;
+        await Storage.setUserId(providedUserId);
+        this.logger.log("User ID set from init config:", providedUserId);
+      } else {
+        // Load user ID from storage (e.g., app restart with existing user)
+        this.userId = await Storage.getUserId();
+      }
 
       // Initialize session manager
       this.sessionManager = new SessionManager(
